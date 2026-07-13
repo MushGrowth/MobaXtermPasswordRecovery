@@ -4,10 +4,20 @@ using MobaXtermPasswordRecovery.Utils;
 
 namespace MobaXtermPasswordRecovery
 {
-    class Program
+    internal static class Program
     {
+        [STAThread]
         static int Main(string[] args)
         {
+            if (args.Length == 0)
+            {
+                Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                Application.Run(new MainForm());
+                return 0;
+            }
+
             // dotnet run 跳过项目路径参数
             // if (args.Length > 0 && args[0].EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
             // {

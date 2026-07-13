@@ -10,7 +10,9 @@ namespace MobaXtermPasswordRecovery.Utils
 {
     public static class Logger
     {
-        private static ILogger _logger;
+        private static ILogger? _logger;
+        private static bool _debugEnabled;
+        public static event Action<string>? MessageLogged;
         private static string _defaultOutputTemplate =
             "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}";
 
@@ -19,7 +21,7 @@ namespace MobaXtermPasswordRecovery.Utils
         private static string _debugColor = "\x1b[38;5;14m"; // Cyan
         private static string _resetColor = "\x1b[0m"; // Reset
 
-        public static void Initialize(bool isDebugMode, string outputTemplate = null)
+        public static void Initialize(bool isDebugMode, string? outputTemplate = null)
         {
             if (outputTemplate == null)
             {
@@ -27,6 +29,7 @@ namespace MobaXtermPasswordRecovery.Utils
             }
 
             var level = isDebugMode ? LogEventLevel.Debug : LogEventLevel.Information;
+            _debugEnabled = isDebugMode;
 
             _logger = new LoggerConfiguration()
                 .MinimumLevel.Is(level)
@@ -48,11 +51,17 @@ namespace MobaXtermPasswordRecovery.Utils
                 label = "[+]";
             }
 
-            _logger.Information($"{_infoColor}{label} {message}{_resetColor}");
+            MessageLogged?.Invoke($"{label} {message}");
+            _logger?.Information($"{_infoColor}{label} {message}{_resetColor}");
         }
 
         public static void Debug(string message, bool indent = false, string label = "")
         {
+            if (!_debugEnabled)
+            {
+                return;
+            }
+
             if (indent)
             {
                 message = "  " + message;
@@ -63,7 +72,8 @@ namespace MobaXtermPasswordRecovery.Utils
                 label = "[+]";
             }
 
-            _logger.Debug($"{_debugColor}{label} {message}{_resetColor}");
+            MessageLogged?.Invoke($"{label} {message}");
+            _logger?.Debug($"{_debugColor}{label} {message}{_resetColor}");
         }
 
         private class CustomFormatter : ITextFormatter

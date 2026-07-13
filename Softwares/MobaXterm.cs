@@ -165,7 +165,10 @@ namespace MobaXtermPasswordRecovery.Softwares
 
         public void Run(string[] args)
         {
-            Initialize(args);
+            if (!Initialize(args))
+            {
+                return;
+            }
 
             // 不存在配置文件，就从注册表里获取信息。即使卸载了，可能还在注册表中保有密码。
             if (!File.Exists(IniPath))
@@ -216,7 +219,9 @@ namespace MobaXtermPasswordRecovery.Softwares
                 // string MPSetAccount = data["Misc"]["MPSetAccount"];
                 // string MPSetComputer = data["Misc"]["MPSetComputer"];
                 // Sesspass.UserPrincipalName = $"{MPSetAccount}@{MPSetComputer}";
-                Sesspass.MasterPassword = data["Sesspass"][Sesspass.UserPrincipalName];
+                Sesspass.MasterPassword = data.Sections.ContainsSection("Sesspass")
+                    ? data["Sesspass"][Sesspass.UserPrincipalName] ?? string.Empty
+                    : string.Empty;
                 if (data.Sections.ContainsSection("Credentials"))
                 {
                     KeyDataCollection Credentials = data["Credentials"];
@@ -270,8 +275,12 @@ namespace MobaXtermPasswordRecovery.Softwares
             Logger.Info($"", label: "[*]");
         }
 
-        private void Initialize(string[] args)
+        private bool Initialize(string[] args)
         {
+            Sesspass = ("", "");
+            SessionP = "";
+            IniPath = "";
+            Installed = 0;
             Sesspass.UserPrincipalName = $"{Environment.UserName}@{Environment.MachineName}";
             // 如果传递了配置文件路径，则从配置文件中加载信息进行解密。
             if (args != null && args.Length > 0)
@@ -346,7 +355,7 @@ namespace MobaXtermPasswordRecovery.Softwares
                 if (string.IsNullOrWhiteSpace(SessionP) && !File.Exists(tempIniPath))
                 {
                     Logger.Info("MobaXterm does not exist on this machine.", label: "[x]");
-                    return;
+                    return false;
                 }
                 else if (File.Exists(tempIniPath))
                 {
@@ -384,6 +393,7 @@ namespace MobaXtermPasswordRecovery.Softwares
             {
                 Logger.Info("MobaXterm Installer Edition");
             }
+            return true;
         }
     }
 }
