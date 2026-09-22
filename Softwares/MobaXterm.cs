@@ -48,11 +48,15 @@ namespace MobaXtermPasswordRecovery.Softwares
         {
             // Extend sessionP to at least 20 characters
             StringBuilder sessionPBuilder = new StringBuilder(SessionP);
+            if (sessionPBuilder.Length == 0)
+            {
+                throw new InvalidDataException("配置中缺少 SessionP，无法解密旧格式密码。");
+            }
             while (sessionPBuilder.Length < 20)
             {
                 sessionPBuilder.Append(sessionPBuilder);
             }
-            SessionP = sessionPBuilder.ToString().Substring(0, 20);
+            string normalizedSessionP = sessionPBuilder.ToString().Substring(0, 20);
 
             // Construct s2 using Environment variables
             string s2 = (Environment.UserName + Environment.UserDomainName)
@@ -60,7 +64,7 @@ namespace MobaXtermPasswordRecovery.Softwares
                 .Substring(0, 20);
 
             // Create key space array with both upper and lower cases
-            string[] keySpace = { SessionP.ToUpper(), SessionP.ToLower() };
+            string[] keySpace = { normalizedSessionP.ToUpper(), normalizedSessionP.ToLower() };
 
             // Initialize the base key
             byte[] key = Encoding.UTF8.GetBytes("0d5e9n1348/U2+67");
@@ -122,7 +126,10 @@ namespace MobaXtermPasswordRecovery.Softwares
         private string decryptWithMasterPassword(string ciphertext)
         {
             // 将 base64 字符串解码转换为字节数组
-            byte[] MasterPasswordBytes = Convert.FromBase64String(Sesspass.MasterPassword);
+            byte[] MasterPasswordBytes = DecodeBase64(
+                Sesspass.MasterPassword,
+                "当前 Windows 用户对应的 Master Password 数据"
+            );
 
             // 将 DPAPI 前缀和 MasterPassword 拼接出完整的加密数据
             byte[] fullEncryptedData = new byte[DpapiHeader.Length + MasterPasswordBytes.Length];
@@ -136,17 +143,32 @@ namespace MobaXtermPasswordRecovery.Softwares
             );
 
             // 使用 DPAPI 解密。SessionP 为 DPAPI 加解密的 Entropy。
-            byte[] temp = ProtectedData.Unprotect(
-                fullEncryptedData,
-                Encoding.UTF8.GetBytes(SessionP),
-                DataProtectionScope.CurrentUser
-            );
+            byte[] temp;
+            try
+            {
+                temp = ProtectedData.Unprotect(
+                    fullEncryptedData,
+                    Encoding.UTF8.GetBytes(SessionP),
+                    DataProtectionScope.CurrentUser
+                );
+            }
+            catch (CryptographicException exception)
+            {
+                throw new InvalidDataException(
+                    "无法用当前 Windows 用户解锁 Master Password。请在保存密码时使用的原电脑、原 Windows 用户下运行。",
+                    exception
+                );
+            }
 
             // 将解密后的字节数组转换为字符串（现在获取到的这个字符串是 base64 编码过的）
             string temp2 = Encoding.UTF8.GetString(temp);
 
             // 将解密后的 base64 字符串解码转换为字节数组
-            byte[] output = Convert.FromBase64String(temp2);
+            byte[] output = DecodeBase64(temp2, "DPAPI 解密后的 Master Password 数据");
+            if (output.Length < 32)
+            {
+                throw new InvalidDataException("Master Password 数据长度不足，无法提取 AES 密钥。");
+            }
 
             // 提取 AES 密钥。
             byte[] aeskey = new byte[32];
@@ -158,9 +180,44 @@ namespace MobaXtermPasswordRecovery.Softwares
             Array.Copy(ivbytes, iv, 16);
 
             // AES 解密，获取到明文密码。
-            byte[] cipherBytes = Convert.FromBase64String(ciphertext);
+            byte[] cipherBytes = DecodeBase64(ciphertext, "连接密码密文");
             string plaintext = AES.Decrypt(cipherBytes, aeskey, iv);
             return plaintext;
+        }
+
+        private static byte[] DecodeBase64(string value, string description)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new InvalidDataException($"{description}为空。");
+            }
+
+            try
+            {
+                return Convert.FromBase64String(value.Trim());
+            }
+            catch (FormatException exception)
+            {
+                throw new InvalidDataException($"{description}不是有效的 Base64 格式。", exception);
+            }
+        }
+
+        private static bool IsValidBase64(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            try
+            {
+                Convert.FromBase64String(value.Trim());
+                return true;
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
         }
 
         public void Run(string[] args)
@@ -259,20 +316,34 @@ namespace MobaXtermPasswordRecovery.Softwares
             bool isCredential = true
         )
         {
-            string plaintext = string.IsNullOrWhiteSpace(Sesspass.MasterPassword)
-                ? decryptWithoutMasterPassword(ciphertext)
-                : decryptWithMasterPassword(ciphertext);
-            if (isCredential)
+            string recordName = isCredential ? name : username;
+            try
             {
-                Logger.Info($"Name:     {name}", indent: true, label: "[*]");
-                Logger.Info($"Username: {username}", indent: true, label: "[*]");
+                bool hasMasterPassword = !string.IsNullOrWhiteSpace(Sesspass.MasterPassword);
+                bool usesMasterPasswordFormat = hasMasterPassword && IsValidBase64(ciphertext);
+                string plaintext = usesMasterPasswordFormat
+                    ? decryptWithMasterPassword(ciphertext)
+                    : decryptWithoutMasterPassword(ciphertext);
+
+                if (isCredential)
+                {
+                    Logger.Info($"Name:     {name}", indent: true, label: "[*]");
+                    Logger.Info($"Username: {username}", indent: true, label: "[*]");
+                }
+                else
+                {
+                    Logger.Info($"ConnName: {username}", indent: true, label: "[*]");
+                }
+                Logger.Info($"Password: {plaintext}", indent: true, label: "[*]");
+                Logger.Info("", label: "[*]");
             }
-            else
+            catch (Exception exception)
             {
-                Logger.Info($"ConnName: {username}", indent: true, label: "[*]");
+                Logger.Info(
+                    $"跳过无法解密的记录“{recordName}”：{exception.Message}",
+                    label: "[-]"
+                );
             }
-            Logger.Info($"Password: {plaintext}", indent: true, label: "[*]");
-            Logger.Info($"", label: "[*]");
         }
 
         private bool Initialize(string[] args)
