@@ -398,6 +398,7 @@ FodyWeavers.xsd
 *.sln.iml
 
 # Local MobaXterm configuration and credential-recovery output
+work/
 MobaXterm.ini
 *.log
 recovery-output*.txt

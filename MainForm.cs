@@ -363,9 +363,10 @@ internal sealed class MainForm : Form
                 lines = _rawLines.ToArray();
             }
             int passwordCount = lines.Count(IsPasswordLine);
-            _statusLabel.Text = passwordCount > 0
-                ? $"完成：找到 {passwordCount} 条密码记录"
-                : "完成，但没有找到可显示的密码记录";
+            int failedCount = lines.Count(line => line.StartsWith("[-]", StringComparison.Ordinal));
+            _statusLabel.Text = failedCount > 0
+                ? $"处理结束：显示 {passwordCount} 条，失败 {failedCount} 条；请查看原因"
+                : passwordCount > 0 ? $"完成：找到 {passwordCount} 条密码记录" : "完成，但没有找到可显示的密码记录";
         }
         catch (Exception exception)
         {

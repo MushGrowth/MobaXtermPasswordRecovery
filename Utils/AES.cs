@@ -42,7 +42,7 @@ namespace MobaXtermPasswordRecovery.Utils
             {
                 aes.Mode = CipherMode.CFB;
                 aes.FeedbackSize = 8;
-                aes.Padding = PaddingMode.Zeros;
+                aes.Padding = PaddingMode.None;
                 aes.Key = bKey;
                 aes.IV = iv;
 
@@ -53,7 +53,7 @@ namespace MobaXtermPasswordRecovery.Utils
                         CryptoStreamMode.Read
                     )
                 )
-                using (StreamReader reader = new StreamReader(cryptoStream))
+                using (StreamReader reader = new StreamReader(cryptoStream, new UTF8Encoding(false, true), false))
                 {
                     return reader.ReadToEnd();
                 }

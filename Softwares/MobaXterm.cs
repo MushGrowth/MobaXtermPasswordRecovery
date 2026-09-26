@@ -174,10 +174,26 @@ namespace MobaXtermPasswordRecovery.Softwares
             byte[] aeskey = new byte[32];
             Array.Copy(output, aeskey, 32);
 
-            // 生成初始向量
-            byte[] ivbytes = AES.Encrypt(new byte[16], aeskey);
-            byte[] iv = new byte[16];
-            Array.Copy(ivbytes, iv, 16);
+            return DecryptMasterCiphertext(ciphertext, aeskey);
+        }
+
+        internal static string DecryptMasterCiphertext(string ciphertext, byte[] aeskey)
+        {
+            byte[] iv;
+            if (ciphertext.StartsWith("_@", StringComparison.Ordinal))
+            {
+                // 26.4: marker + 18 ASCII random characters + Base64 ciphertext.
+                // Rijndael uses the first 16 characters of that field as its IV.
+                const string alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+/";
+                if (ciphertext.Length <= 20 || ciphertext.Substring(2, 18).Any(c => !alphabet.Contains(c)))
+                    throw new InvalidDataException("新版密码记录头损坏或长度不足。");
+                iv = Encoding.ASCII.GetBytes(ciphertext.Substring(2, 16));
+                ciphertext = ciphertext.Substring(20);
+            }
+            else
+            {
+                iv = AES.Encrypt(new byte[16], aeskey).Take(16).ToArray();
+            }
 
             // AES 解密，获取到明文密码。
             byte[] cipherBytes = DecodeBase64(ciphertext, "连接密码密文");
@@ -320,10 +336,23 @@ namespace MobaXtermPasswordRecovery.Softwares
             try
             {
                 bool hasMasterPassword = !string.IsNullOrWhiteSpace(Sesspass.MasterPassword);
-                bool usesMasterPasswordFormat = hasMasterPassword && IsValidBase64(ciphertext);
-                string plaintext = usesMasterPasswordFormat
+                bool isNewFormat = ciphertext.StartsWith("_@", StringComparison.Ordinal);
+                if (isNewFormat && !hasMasterPassword)
+                {
+                    throw new InvalidDataException("新版密码记录需要当前 Windows 用户对应的 Master Password 数据；请在原电脑、原 Windows 用户下运行。");
+                }
+                if (hasMasterPassword && !isNewFormat && !IsValidBase64(ciphertext))
+                {
+                    throw new InvalidDataException("Master Password 已启用，但连接密文不是有效 Base64；格式不受支持或数据损坏。");
+                }
+                string plaintext = hasMasterPassword
                     ? decryptWithMasterPassword(ciphertext)
                     : decryptWithoutMasterPassword(ciphertext);
+
+                if (plaintext.Length == 0 || plaintext.Any(char.IsControl) || plaintext.Contains('\uFFFD'))
+                {
+                    throw new InvalidDataException("解密结果为空或包含异常字符，无法确认密码正确。");
+                }
 
                 if (isCredential)
                 {

@@ -14,7 +14,8 @@
 - 支持浏览和自动查找 `MobaXterm.ini`。
 - 结果默认隐藏密码，可按需显示或复制。
 - 自包含单文件 EXE，无需另外安装运行环境。
-- 兼容同一配置中混合存在的 Master Password 格式和旧格式密码记录。
+- 支持 MobaXterm 26.4 中的 `_@` 密码格式，同时保留旧版 Master Password 格式支持。
+- 无效格式或异常解密结果明确报错，不再把新版密文回退到旧算法输出乱码。
 - 单条异常记录会给出原因并继续处理，不再中断全部恢复任务。
 
 ## 使用限制
@@ -55,6 +56,12 @@ dotnet publish .\MobaXtermPasswordRecovery.csproj -c Release
 
 ```text
 bin\Release\publish\MobaXtermPasswordRecovery.exe
+```
+
+构建后可在 PowerShell 7 中运行合成数据回归测试（不读取真实配置）：
+
+```powershell
+.\tests\Test-PasswordFormats.ps1
 ```
 
 ## 安全建议
